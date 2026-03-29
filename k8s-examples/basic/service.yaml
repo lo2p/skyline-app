@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: skyline
+  name: skyline-service
+  labels:
+    app: skyline
+spec:
+  selector:
+    app: skyline
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
