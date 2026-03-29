@@ -31,7 +31,7 @@ Basic manifests live in `k8s-examples/basic`.
 
 Current Kubernetes flow expects External Secrets instead of a manually created `Secret`:
 
-- `namespace.yaml` creates the `skyline` namespace
+- `00-namespace.yaml` creates the `skyline` namespace first
 - `secret-store.yaml` points to AWS Systems Manager Parameter Store
 - `secret.yaml` defines the `ExternalSecret`
 - `deployment.yaml` reads DB settings from `skyline-db-secret`
