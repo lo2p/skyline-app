@@ -14,11 +14,11 @@ spec:
     metadata:
       annotations:
         ad.datadoghq.com/skyline.logs: >-
-          [{"source":"java","service":"skyline","tags":["env:demo","version:test2"]}]
+          [{"source":"java","service":"skyline-app","tags":["env:demo","version:test2"]}]
       labels:
         app: skyline
         tags.datadoghq.com/env: demo
-        tags.datadoghq.com/service: skyline
+        tags.datadoghq.com/service: skyline-app
         tags.datadoghq.com/version: test2
     spec:
       containers:
@@ -36,11 +36,17 @@ spec:
         - name: DD_TRACE_AGENT_PORT
           value: "8126"
         - name: DD_SERVICE
-          value: "skyline-app"
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['tags.datadoghq.com/service']
         - name: DD_ENV
-          value: "demo"
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['tags.datadoghq.com/env']
         - name: DD_VERSION
-          value: "test2"
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['tags.datadoghq.com/version']
         - name: DB_HOST
           valueFrom:
             secretKeyRef:
