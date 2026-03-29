@@ -17,10 +17,10 @@ spec:
       enabled: true
 
     clusterChecks:
-      enabled: true
+      enabled: false
 
     orchestratorExplorer:
-      enabled: true
+      enabled: false
 
     logCollection:
       enabled: true

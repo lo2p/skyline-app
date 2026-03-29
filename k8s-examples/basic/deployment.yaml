@@ -47,6 +47,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['tags.datadoghq.com/version']
+        - name: DD_TRACE_SAMPLE_RATE
+          value: "0.1"
         - name: DB_HOST
           valueFrom:
             secretKeyRef:
