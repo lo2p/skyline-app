@@ -19,49 +19,47 @@ docker build -t skyline:latest .
 docker run -p 8080:8080 \
   -e DB_HOST=localhost \
   -e DB_PORT=3306 \
-  -e DB_NAME=skyline \
+  -e DB_NAME=skylineapp \
   -e DB_USER=skyline_user \
   -e DB_PASSWORD=changeme \
   skyline:latest
 ```
 
-## Kubernetes
+## EKS Deploy
 
-Basic manifests live in `k8s-examples/basic`.
+This repo is designed to be deployed after the infrastructure in `skyline-infra-terraform` has already created:
 
-Current Kubernetes flow expects External Secrets instead of a manually created `Secret`:
+- the EKS cluster
+- the RDS MySQL instance
+- the SSM Parameter Store values for the database
+- the External Secrets IAM permissions
+- the AWS Load Balancer Controller
 
-- `00-namespace.yaml` creates the `skyline` namespace first
-- `secret-store.yaml` points to AWS Systems Manager Parameter Store
-- `secret.yaml` defines the `ExternalSecret`
-- `deployment.yaml` reads DB settings from `skyline-db-secret`
-- `service.yaml` creates the application service
-- `10-ingress.yaml` creates the public ALB ingress when AWS Load Balancer Controller is installed
-- `deployment.yaml` keeps the Datadog log autodiscovery annotation for container log collection
+The application manifests under `k8s-examples/basic/` now include:
 
-Deploy the basic example:
+- `00-namespace.yaml`: creates the `skyline` namespace
+- `secret-store.yaml`: `SecretStore` for AWS Systems Manager Parameter Store
+- `secret.yaml`: `ExternalSecret` that creates `skyline-db-secret`
+- `deployment.yaml`: app deployment, probes, and Datadog tags/annotations
+- `service.yaml`: internal `ClusterIP` service
+- `10-ingress.yaml`: public ALB ingress
+
+### 1. Verify Cluster Prerequisites
+
+Check the current context and required controllers first:
 
 ```bash
-kubectl apply -f k8s-examples/basic/
-```
-
-Before the first apply, verify External Secrets is actually installed in the same cluster your current `kubectl` context points to:
-
-```bash
+kubectl config current-context
 kubectl get crd externalsecrets.external-secrets.io secretstores.external-secrets.io
 kubectl get deployment -n external-secrets
-```
-
-If either command fails, the cluster does not have the External Secrets CRDs yet, even if `skyline-setup-eks.sh` was run. In that case, re-run the setup on the target cluster and confirm it completes without Helm or rollout errors before applying `k8s-examples/basic/`.
-
-If `kubectl get deployment -n external-secrets` returns `No resources found`, the namespace may have been created but the operator itself was not installed successfully.
-If you want the ALB from `10-ingress.yaml`, also verify AWS Load Balancer Controller is installed:
-
-```bash
 kubectl get deployment -n kube-system aws-load-balancer-controller
 ```
 
-This flow assumes External Secrets is installed and the following Parameter Store values already exist:
+If External Secrets or the AWS Load Balancer Controller is missing, re-run the EKS bootstrap from the infra repo before deploying the app.
+
+### 2. Verify Database Parameters Exist
+
+The app expects these SSM Parameter Store keys to already exist:
 
 - `/skyline-system-demo/demo/database/host`
 - `/skyline-system-demo/demo/database/port`
@@ -69,12 +67,69 @@ This flow assumes External Secrets is installed and the following Parameter Stor
 - `/skyline-system-demo/demo/database/username`
 - `/skyline-system-demo/demo/database/password`
 
-On the first EKS run, the Spring Boot `production` profile now creates or updates the schema automatically against the Terraform-managed RDS database. If you also want demo data, run `scripts/init-database.sh` after the database is reachable.
-For Datadog, log collection in this example relies on the pod annotation in `deployment.yaml`, while APM requires a reachable Datadog Agent on port `8126`.
+### 3. Build and Push the App Image
+
+Update the image tag in `k8s-examples/basic/deployment.yaml` after pushing a new image.
+
+Example:
+
+```bash
+docker build -t 438916407893.dkr.ecr.ap-northeast-2.amazonaws.com/skyline:test4 .
+docker push 438916407893.dkr.ecr.ap-northeast-2.amazonaws.com/skyline:test4
+```
+
+### 4. Deploy the Basic Manifests
+
+Apply everything in one shot:
+
+```bash
+kubectl apply -f k8s-examples/basic/
+kubectl rollout status deployment/skyline-app -n skyline
+```
+
+### 5. Verify Secrets, Pods, Service, and ALB
+
+```bash
+kubectl get externalsecret,secretstore -n skyline
+kubectl get secret skyline-db-secret -n skyline
+kubectl get pods -n skyline
+kubectl get svc -n skyline
+kubectl get ingress -n skyline
+kubectl describe ingress skyline-ingress -n skyline
+kubectl get ingress skyline-ingress -n skyline -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'; echo
+```
+
+The service is intentionally `ClusterIP`. Public access comes from the ALB created by `10-ingress.yaml`, not from a `LoadBalancer` service.
+
+### 6. Initialize Demo Data If Needed
+
+The `production` profile now uses Hibernate schema auto-update, so the app can create/update tables on first startup against a fresh Terraform-created database.
+
+If you also want the sample data:
+
+```bash
+./scripts/init-database.sh <rds-endpoint> <db-user> <db-password> skylineapp
+```
+
+The schema script is now idempotent for trigger creation, so rerunning it is safe.
+
+### 7. Test the App
+
+```bash
+ALB=$(kubectl get ingress skyline-ingress -n skyline -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -i "http://$ALB/health"
+curl -i "http://$ALB/ready"
+curl -i "http://$ALB/api/flights"
+```
 
 ## Datadog
 
-`k8s-examples/datadog/datadog-agent.yaml` is a `DatadogAgent` custom resource. It is not directly appliable on a fresh cluster by itself. First install the Datadog Operator and its CRDs, then create the Datadog API key secret, and only then apply the `DatadogAgent` manifest.
+`k8s-examples/datadog/datadog-agent.yaml` is a `DatadogAgent` custom resource for the Datadog Operator. It does not work on a fresh cluster by itself. The correct order is:
+
+1. install the Datadog Operator
+2. create the `datadog-secret` API key secret in the `datadog` namespace
+3. apply the `DatadogAgent` custom resource
+4. restart the app deployment so pods are recreated with Datadog injection
 
 Example sequence:
 
@@ -84,14 +139,36 @@ helm repo update
 helm install datadog-operator datadog/datadog-operator -n datadog --create-namespace
 
 kubectl create secret generic datadog-secret -n datadog \
-  --from-literal api-key=<DATADOG_API_KEY>
+  --from-literal api-key='YOUR_REAL_DATADOG_API_KEY'
 
 kubectl apply -f k8s-examples/datadog/datadog-agent.yaml
+
+kubectl rollout restart deployment/skyline-app -n skyline
+kubectl rollout status deployment/skyline-app -n skyline
 ```
+
+Verify Datadog:
+
+```bash
+kubectl get datadogagent -n datadog
+kubectl get pods -n datadog
+AGENT_POD=$(kubectl get pods -n datadog -o name | grep datadog-agent | head -n 1)
+kubectl exec -n datadog "$AGENT_POD" -- agent status
+```
+
+What to look for:
+
+- `API key valid`
+- APM traces received by the agent
+- logs being sent successfully
+- `service: skyline-app`
+- `env: demo`
+
+If `kubectl apply -f k8s-examples/datadog/datadog-agent.yaml` fails with `no matches for kind "DatadogAgent"`, the Operator CRDs are not installed in the current cluster.
 
 ## Helm Chart
 
-The chart under `k8s-examples/advanced/helm-chart` now also expects an existing Kubernetes secret:
+The chart under `k8s-examples/advanced/helm-chart` expects an existing Kubernetes secret:
 
 - secret name: `skyline-db-secret`
 - keys: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
@@ -120,3 +197,5 @@ Database connection pool size is still configured through Helm values.
 
 - For local development, you can still pass DB environment variables directly.
 - For EKS, the recommended path is Parameter Store plus External Secrets, not `kubectl create secret`.
+- The default database name is `skylineapp`.
+- The Datadog deployment uses the service name `skyline-app` consistently across logs, tags, and traces.
