@@ -55,4 +55,6 @@ If you want to reduce Datadog APM cost further, prefer Datadog UI Ingestion Cont
 - https://docs.datadoghq.com/tracing/guide/trace_ingestion_volume_control/
 - https://docs.datadoghq.com/tracing/trace_collection/dd_libraries/java/
 
+Remote Ingestion Control rules configured in the Datadog UI take precedence over local tracer sampling rules.
+
 If `kubectl apply -f k8s-examples/datadog/datadog-agent.yaml` fails with `no matches for kind "DatadogAgent"`, the Datadog Operator CRDs are not installed in the current cluster.

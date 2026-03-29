@@ -49,7 +49,12 @@ spec:
               fieldPath: metadata.labels['tags.datadoghq.com/version']
         - name: DD_TRACE_SAMPLING_RULES
           value: >-
-            [{"service":"skyline-app","resource":"GET /health","sample_rate":0.0},
+            [{"service":"skyline-app","tags":{"http.url":"http://.*/health$"},"sample_rate":0.0},
+            {"service":"skyline-app","tags":{"http.url":"http://.*/ready$"},"sample_rate":0.0},
+            {"service":"skyline-app","tags":{"http.url":"http://.*/actuator/health$"},"sample_rate":0.0},
+            {"service":"skyline-app","tags":{"http.url":"http://.*/actuator/prometheus$"},"sample_rate":0.0},
+            {"service":"skyline-app","tags":{"http.useragent":"kube-probe/.*"},"sample_rate":0.0},
+            {"service":"skyline-app","resource":"GET /health","sample_rate":0.0},
             {"service":"skyline-app","resource":"GET /ready","sample_rate":0.0},
             {"service":"skyline-app","resource":"GET /actuator/health","sample_rate":0.0},
             {"service":"skyline-app","resource":"GET /actuator/prometheus","sample_rate":0.0},

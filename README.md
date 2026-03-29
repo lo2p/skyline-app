@@ -179,6 +179,8 @@ For larger volume reduction, use Datadog APM Ingestion Controls in the Datadog U
 - https://docs.datadoghq.com/tracing/guide/trace_ingestion_volume_control/
 - https://docs.datadoghq.com/tracing/trace_collection/dd_libraries/java/
 
+Datadog also documents that remote Ingestion Control rules from the Datadog UI take precedence over local tracer sampling rules. If local `DD_TRACE_SAMPLING_RULES` do not appear to behave as expected, check the Datadog UI for existing remote sampling configuration first.
+
 If `kubectl apply -f k8s-examples/datadog/datadog-agent.yaml` fails with `no matches for kind "DatadogAgent"`, the Operator CRDs are not installed in the current cluster.
 
 ## Helm Chart
