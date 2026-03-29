@@ -47,8 +47,15 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['tags.datadoghq.com/version']
-        - name: DD_TRACE_SAMPLE_RATE
-          value: "0.1"
+        - name: DD_TRACE_SAMPLING_RULES
+          value: >-
+            [{"service":"skyline-app","resource":"GET /health","sample_rate":0.0},
+            {"service":"skyline-app","resource":"GET /ready","sample_rate":0.0},
+            {"service":"skyline-app","resource":"GET /actuator/health","sample_rate":0.0},
+            {"service":"skyline-app","resource":"GET /actuator/prometheus","sample_rate":0.0},
+            {"service":"skyline-app","sample_rate":0.05}]
+        - name: DD_TRACE_RATE_LIMIT
+          value: "10"
         - name: DB_HOST
           valueFrom:
             secretKeyRef:

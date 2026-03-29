@@ -164,6 +164,21 @@ What to look for:
 - `service: skyline-app`
 - `env: demo`
 
+For the default dev setup in this repo, Datadog is tuned for lower cost:
+
+- `clusterChecks` disabled
+- `orchestratorExplorer` disabled
+- noisy probe endpoints like `/health` and `/ready` sampled at `0%`
+- remaining traces sampled at `5%`
+- per-process trace rate limited to `10` sampled traces per second
+
+This keeps logs plus lightweight APM without paying to keep every probe and every normal request trace.
+
+For larger volume reduction, use Datadog APM Ingestion Controls in the Datadog UI. Datadog documents that RED metrics stay accurate even when ingestion sampling is reduced there. Sources:
+
+- https://docs.datadoghq.com/tracing/guide/trace_ingestion_volume_control/
+- https://docs.datadoghq.com/tracing/trace_collection/dd_libraries/java/
+
 If `kubectl apply -f k8s-examples/datadog/datadog-agent.yaml` fails with `no matches for kind "DatadogAgent"`, the Operator CRDs are not installed in the current cluster.
 
 ## Helm Chart

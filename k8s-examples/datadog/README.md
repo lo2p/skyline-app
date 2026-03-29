@@ -42,4 +42,17 @@ What to look for in `agent status`:
 - log sending over HTTPS
 - no `403` or `API Key invalid`
 
+The app deployment in `k8s-examples/basic/deployment.yaml` is set up for low-cost dev APM:
+
+- `clusterChecks` disabled
+- `orchestratorExplorer` disabled
+- `/health` and `/ready` traces sampled at `0%`
+- remaining traces sampled at `5%`
+- trace rate limited per process
+
+If you want to reduce Datadog APM cost further, prefer Datadog UI Ingestion Controls before adding more aggressive app-side sampling:
+
+- https://docs.datadoghq.com/tracing/guide/trace_ingestion_volume_control/
+- https://docs.datadoghq.com/tracing/trace_collection/dd_libraries/java/
+
 If `kubectl apply -f k8s-examples/datadog/datadog-agent.yaml` fails with `no matches for kind "DatadogAgent"`, the Datadog Operator CRDs are not installed in the current cluster.
