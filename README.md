@@ -83,7 +83,7 @@ helm repo add datadog https://helm.datadoghq.com
 helm repo update
 helm install datadog-operator datadog/datadog-operator -n datadog --create-namespace
 
-kubectl create secret generic datadog-secret -n default \
+kubectl create secret generic datadog-secret -n datadog \
   --from-literal api-key=<DATADOG_API_KEY>
 
 kubectl apply -f k8s-examples/datadog/datadog-agent.yaml
