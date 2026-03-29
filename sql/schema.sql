@@ -87,6 +87,7 @@ GROUP BY f.flight_id;
 
 -- 트리거: 예약 생성 시 available_seats 감소
 DELIMITER //
+DROP TRIGGER IF EXISTS tr_reservation_insert//
 CREATE TRIGGER tr_reservation_insert 
 AFTER INSERT ON reservations
 FOR EACH ROW
@@ -99,6 +100,7 @@ BEGIN
 END//
 
 -- 트리거: 예약 상태 변경 시 available_seats 조정
+DROP TRIGGER IF EXISTS tr_reservation_update//
 CREATE TRIGGER tr_reservation_update
 AFTER UPDATE ON reservations
 FOR EACH ROW
@@ -117,6 +119,7 @@ BEGIN
 END//
 
 -- 트리거: 예약 삭제 시 available_seats 증가
+DROP TRIGGER IF EXISTS tr_reservation_delete//
 CREATE TRIGGER tr_reservation_delete
 AFTER DELETE ON reservations
 FOR EACH ROW

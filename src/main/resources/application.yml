@@ -66,6 +66,8 @@ spring:
     activate:
       on-profile: production
   jpa:
+    hibernate:
+      ddl-auto: update
     show-sql: false
   logging:
     level:

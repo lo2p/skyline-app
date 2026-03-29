@@ -16,7 +16,7 @@ fi
 RDS_ENDPOINT=$1
 DB_USER=${2:-admin}
 DB_PASSWORD=${3}
-DB_NAME=${4:-skyline}
+DB_NAME=${4:-skylineapp}
 
 # 색상 정의
 RED='\033[0;31m'

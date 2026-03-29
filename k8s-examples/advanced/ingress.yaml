@@ -13,6 +13,7 @@ metadata:
     alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
     alb.ingress.kubernetes.io/tags: Environment=dev,Project=skyline-system-demo
 spec:
+  ingressClassName: alb
   rules:
   - host: skyline-demo.your-domain.com
     http:

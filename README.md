@@ -35,6 +35,8 @@ Current Kubernetes flow expects External Secrets instead of a manually created `
 - `secret-store.yaml` points to AWS Systems Manager Parameter Store
 - `secret.yaml` defines the `ExternalSecret`
 - `deployment.yaml` reads DB settings from `skyline-db-secret`
+- `service.yaml` creates an internal `ClusterIP` service only
+- `deployment.yaml` keeps the Datadog log autodiscovery annotation for container log collection
 
 Deploy the basic example:
 
@@ -60,6 +62,10 @@ This flow assumes External Secrets is installed and the following Parameter Stor
 - `/skyline-system-demo/demo/database/name`
 - `/skyline-system-demo/demo/database/username`
 - `/skyline-system-demo/demo/database/password`
+
+On the first EKS run, the Spring Boot `production` profile now creates or updates the schema automatically against the Terraform-managed RDS database. If you also want demo data, run `scripts/init-database.sh` after the database is reachable.
+The basic example does not create a public ALB. To expose the app externally through AWS Load Balancer Controller, also apply `k8s-examples/advanced/ingress.yaml`.
+For Datadog, log collection in this example relies on the pod annotation in `deployment.yaml`, while APM requires a reachable Datadog Agent on port `8126`.
 
 ## Helm Chart
 

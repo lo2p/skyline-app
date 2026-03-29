@@ -26,6 +26,10 @@ spec:
       containerCollectAll: false
 
     apm:
+      enabled: true
+      hostPortConfig:
+        enabled: true
+        hostPort: 8126
       instrumentation:
         enabled: true
         targets:

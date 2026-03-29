@@ -24,6 +24,7 @@ spec:
       containers:
       - name: skyline
         image: 438916407893.dkr.ecr.ap-northeast-2.amazonaws.com/skyline:test4
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http
@@ -67,6 +68,14 @@ spec:
               key: DB_PASSWORD
         - name: DB_CONNECTION_POOL_SIZE
           value: "10"
+        startupProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 18
         livenessProbe:
           httpGet:
             path: /health
