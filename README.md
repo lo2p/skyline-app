@@ -42,7 +42,18 @@ Deploy the basic example:
 kubectl apply -f k8s-examples/basic/
 ```
 
-This assumes External Secrets is already installed in the cluster and the following Parameter Store values already exist:
+Before the first apply, verify External Secrets is actually installed in the same cluster your current `kubectl` context points to:
+
+```bash
+kubectl get crd externalsecrets.external-secrets.io secretstores.external-secrets.io
+kubectl get deployment -n external-secrets
+```
+
+If either command fails, the cluster does not have the External Secrets CRDs yet, even if `skyline-setup-eks.sh` was run. In that case, re-run the setup on the target cluster and confirm it completes without Helm or rollout errors before applying `k8s-examples/basic/`.
+
+If `kubectl get deployment -n external-secrets` returns `No resources found`, the namespace may have been created but the operator itself was not installed successfully.
+
+This flow assumes External Secrets is installed and the following Parameter Store values already exist:
 
 - `/skyline-system-demo/demo/database/host`
 - `/skyline-system-demo/demo/database/port`
