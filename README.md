@@ -1,65 +1,135 @@
 # skyline-app
 
-Skyline is a demo flight reservation application for local Docker and AWS EKS practice.
+[English README](./README.en.md)
 
-## Stack
+이 repo는 항공 예약 도메인 자체를 강조하기 위한 프로젝트라기보다,  
+**Spring Boot + React 애플리케이션을 EKS에서 운영 가능한 workload로 정리하고 observability 경로까지 연결한 결과**를 보여주기 위한 demo application repo입니다.
 
-- frontend: React
-- backend: Spring Boot
-- database: MySQL
-- container build: Docker multi-stage build
+핵심은 기능 추가보다 아래 항목에 있습니다.
 
-## Local Run
+- Docker 기반 container build
+- RDS 연동을 전제로 한 runtime configuration
+- Kubernetes 배포 매니페스트와 Helm chart 예시
+- SSM Parameter Store + External Secrets 기반 secret 연결
+- Datadog 연동을 고려한 health / tracing / log collection 준비
 
-Build and run the app container:
+> 이 repo는 production-ready 서비스 완성본을 주장하지 않습니다.  
+> 보다 정확히는, 인프라 repo에서 준비한 EKS/RDS 환경 위에 애플리케이션 전달 경로를 올려보는 PoC workload snapshot입니다.
+
+## Overview
+
+```mermaid
+flowchart LR
+  CODE[App Source] --> DOCKER[Docker Image]
+  DOCKER --> REG[ECR]
+  REG --> K8S[Kubernetes Manifests / Helm]
+  INFRA[skyline-infra-terraform] --> EKS[EKS + RDS + SSM]
+  EKS --> K8S
+  K8S --> DD[Datadog]
+```
+
+## 이 repo가 보여주는 것
+
+- Spring Boot 애플리케이션을 외부 MySQL(RDS) 기준으로 실행 가능한 형태로 구성
+- React 정적 리소스를 함께 포함한 단일 컨테이너 이미지 빌드
+- Kubernetes에서 `namespace`, `ExternalSecret`, `Deployment`, `Service`, `Ingress`를 분리해 배포 경로를 설명 가능하게 구성
+- Datadog Operator 환경에서 APM / logs 연결을 위한 주입 지점을 준비
+- demo 범위와 production 경계를 README에서 분리해 설명
+
+## 구성 요약
+
+| 영역 | 내용 |
+|---|---|
+| Backend | Spring Boot 3.2, Java 17, Spring Web, Spring Data JPA, Actuator |
+| Frontend | React + Vite |
+| Database | MySQL |
+| Container | Multi-stage Docker build |
+| Kubernetes | basic manifests, Helm chart example, HPA example |
+| Observability | Prometheus metrics endpoint, Datadog Agent / admission 연계 준비 |
+
+## Repo Structure
+
+```text
+frontend/                React UI
+src/                     Spring Boot application
+sql/                     schema and seed data
+scripts/                 build / RDS init helpers
+k8s-examples/basic/      namespace, secret, deployment, service, ingress
+k8s-examples/advanced/   Helm chart, HPA example
+k8s-examples/datadog/    DatadogAgent example
+docs/                    API, deployment, troubleshooting notes
+```
+
+## Quick Start
+
+### 1. Local Docker Run
+
+가장 빠른 확인 경로는 Docker Compose입니다.
+
+```bash
+docker compose up --build
+```
+
+기본 확인:
+
+```bash
+curl -i http://localhost:8080/health
+curl -i http://localhost:8080/ready
+curl -i http://localhost:8080/api/flights
+```
+
+### 2. Build an Image Manually
 
 ```bash
 docker build -t skyline:latest .
-
-docker run -p 8080:8080 \
-  -e DB_HOST=localhost \
-  -e DB_PORT=3306 \
-  -e DB_NAME=skylineapp \
-  -e DB_USER=skyline_user \
-  -e DB_PASSWORD=changeme \
-  skyline:latest
 ```
 
-## EKS Deploy
+또는 보조 스크립트:
 
-This repo is designed to be deployed after the infrastructure in `skyline-infra-terraform` has already created:
+```bash
+./scripts/build.sh
+```
 
-- the EKS cluster
-- the RDS MySQL instance
-- the SSM Parameter Store values for the database
-- the External Secrets IAM permissions
-- the AWS Load Balancer Controller
+### 3. Initialize Demo Data for RDS
 
-The application manifests under `k8s-examples/basic/` now include:
+Terraform으로 생성한 RDS를 사용하는 경우, 필요 시 아래 스크립트로 schema와 seed data를 반영할 수 있습니다.
 
-- `00-namespace.yaml`: creates the `skyline` namespace
-- `secret-store.yaml`: `SecretStore` for AWS Systems Manager Parameter Store
-- `secret.yaml`: `ExternalSecret` that creates `skyline-db-secret`
-- `deployment.yaml`: app deployment, probes, and Datadog tags/annotations
-- `service.yaml`: internal `ClusterIP` service
-- `10-ingress.yaml`: public ALB ingress
+```bash
+./scripts/init-database.sh <rds-endpoint> <db-user> <db-password> skylineapp
+```
 
-### 1. Verify Cluster Prerequisites
+## EKS Deployment Contract
 
-Check the current context and required controllers first:
+이 repo의 Kubernetes 예시는 인프라 repo에서 아래 선행 조건이 준비된 상태를 전제로 합니다.
+
+- EKS cluster
+- RDS MySQL instance
+- SSM Parameter Store database values
+- External Secrets IAM permissions
+- AWS Load Balancer Controller
+
+기본 매니페스트:
+
+- `k8s-examples/basic/00-namespace.yaml`
+- `k8s-examples/basic/secret-store.yaml`
+- `k8s-examples/basic/secret.yaml`
+- `k8s-examples/basic/deployment.yaml`
+- `k8s-examples/basic/service.yaml`
+- `k8s-examples/basic/10-ingress.yaml`
+
+권장 순서:
 
 ```bash
 kubectl config current-context
 kubectl get crd externalsecrets.external-secrets.io secretstores.external-secrets.io
 kubectl get deployment -n external-secrets
 kubectl get deployment -n kube-system aws-load-balancer-controller
+
+kubectl apply -f k8s-examples/basic/
+kubectl rollout status deployment/skyline-app -n skyline
 ```
 
-If External Secrets or the AWS Load Balancer Controller is missing, re-run the EKS bootstrap from the infra repo before deploying the app.
-
-### 2. Verify Database Parameters Exist
-
-The app expects these SSM Parameter Store keys to already exist:
+앱은 아래 Parameter Store 키를 기대합니다.
 
 - `/skyline-system-demo/demo/database/host`
 - `/skyline-system-demo/demo/database/port`
@@ -67,71 +137,46 @@ The app expects these SSM Parameter Store keys to already exist:
 - `/skyline-system-demo/demo/database/username`
 - `/skyline-system-demo/demo/database/password`
 
-### 3. Build and Push the App Image
+## Runtime Contract
 
-Update the image tag in `k8s-examples/basic/deployment.yaml` after pushing a new image.
+주요 환경변수:
 
-Example:
+- `DB_HOST`
+- `DB_PORT`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASSWORD`
+- `DB_CONNECTION_POOL_SIZE`
 
-```bash
-docker build -t 438916407893.dkr.ecr.ap-northeast-2.amazonaws.com/skyline:test4 .
-docker push 438916407893.dkr.ecr.ap-northeast-2.amazonaws.com/skyline:test4
-```
+기본 endpoint:
 
-### 4. Deploy the Basic Manifests
+- `GET /api/flights`
+- `GET /api/flights/{id}`
+- `GET /api/flights/search`
+- `POST /api/reservations`
+- `GET /health`
+- `GET /ready`
+- `GET /actuator/prometheus`
 
-Apply everything in one shot:
+운영 관점에서 의미 있는 설정:
 
-```bash
-kubectl apply -f k8s-examples/basic/
-kubectl rollout status deployment/skyline-app -n skyline
-```
-
-### 5. Verify Secrets, Pods, Service, and ALB
-
-```bash
-kubectl get externalsecret,secretstore -n skyline
-kubectl get secret skyline-db-secret -n skyline
-kubectl get pods -n skyline
-kubectl get svc -n skyline
-kubectl get ingress -n skyline
-kubectl describe ingress skyline-ingress -n skyline
-kubectl get ingress skyline-ingress -n skyline -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'; echo
-```
-
-The service is intentionally `ClusterIP`. Public access comes from the ALB created by `10-ingress.yaml`, not from a `LoadBalancer` service.
-
-### 6. Initialize Demo Data If Needed
-
-The `production` profile now uses Hibernate schema auto-update, so the app can create/update tables on first startup against a fresh Terraform-created database.
-
-If you also want the sample data:
-
-```bash
-./scripts/init-database.sh <rds-endpoint> <db-user> <db-password> skylineapp
-```
-
-The schema script is now idempotent for trigger creation, so rerunning it is safe.
-
-### 7. Test the App
-
-```bash
-ALB=$(kubectl get ingress skyline-ingress -n skyline -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-curl -i "http://$ALB/health"
-curl -i "http://$ALB/ready"
-curl -i "http://$ALB/api/flights"
-```
+- 기본 datasource는 MySQL 기준으로 구성
+- 기본 profile에서는 schema를 `validate`
+- `production` profile에서는 초기 demo 구동 편의를 위해 `ddl-auto=update`
+- health, info, metrics, prometheus endpoint 노출
+- readiness에 DB health가 포함되도록 Actuator probe 사용
 
 ## Datadog
 
-`k8s-examples/datadog/datadog-agent.yaml` is a `DatadogAgent` custom resource for the Datadog Operator. It does not work on a fresh cluster by itself. The correct order is:
+`k8s-examples/datadog/datadog-agent.yaml`은 Datadog Operator가 이미 설치된 클러스터를 전제로 하는 `DatadogAgent` custom resource 예시입니다.
 
-1. install the Datadog Operator
-2. create the `datadog-secret` API key secret in the `datadog` namespace
-3. apply the `DatadogAgent` custom resource
-4. restart the app deployment so pods are recreated with Datadog injection
+필수 선행 조건:
 
-Example sequence:
+- Datadog Operator 설치
+- Datadog Operator CRDs 설치
+- `datadog` namespace의 `datadog-secret`
+
+예시 순서:
 
 ```bash
 helm repo add datadog https://helm.datadoghq.com
@@ -142,77 +187,41 @@ kubectl create secret generic datadog-secret -n datadog \
   --from-literal api-key='YOUR_REAL_DATADOG_API_KEY'
 
 kubectl apply -f k8s-examples/datadog/datadog-agent.yaml
-
 kubectl rollout restart deployment/skyline-app -n skyline
-kubectl rollout status deployment/skyline-app -n skyline
 ```
 
-Verify Datadog:
+이 repo의 Datadog 방향은 low-cost dev setup에 가깝습니다.
 
-```bash
-kubectl get datadogagent -n datadog
-kubectl get pods -n datadog
-AGENT_POD=$(kubectl get pods -n datadog -o name | grep datadog-agent | head -n 1)
-kubectl exec -n datadog "$AGENT_POD" -- agent status
-```
+- `/health`, `/ready` trace sampling 0%
+- 나머지 trace sampling 5%
+- cluster checks, orchestrator explorer 비활성화
 
-What to look for:
+즉, 모든 telemetry를 완전 수집하기보다, demo 환경에서 logs와 lightweight APM을 우선 연결하는 데 초점을 맞췄습니다.
 
-- `API key valid`
-- APM traces received by the agent
-- logs being sent successfully
-- `service: skyline-app`
-- `env: demo`
+## Helm and Kubernetes Notes
 
-For the default dev setup in this repo, Datadog is tuned for lower cost:
+- `k8s-examples/advanced/helm-chart`는 기존 `skyline-db-secret`이 이미 존재한다고 가정합니다.
+- `k8s-examples/advanced/hpa.yaml`은 autoscaling 예시이며, 운영 검증이 충분히 끝난 production manifest를 의미하지는 않습니다.
+- public access는 `Service`가 아니라 `Ingress`와 ALB 경로를 기준으로 설계했습니다.
 
-- `clusterChecks` disabled
-- `orchestratorExplorer` disabled
-- noisy probe endpoints like `/health` and `/ready` sampled at `0%`
-- remaining traces sampled at `5%`
-- per-process trace rate limited to `10` sampled traces per second
+## PoC Boundary
 
-This keeps logs plus lightweight APM without paying to keep every probe and every normal request trace.
+이 repo가 증명하는 것:
 
-For larger volume reduction, use Datadog APM Ingestion Controls in the Datadog UI. Datadog documents that RED metrics stay accurate even when ingestion sampling is reduced there. Sources:
+- demo application을 EKS에 올릴 수 있는 container and manifest path
+- Parameter Store + External Secrets 기반 secret consumption 흐름
+- Datadog APM / log collection 연결을 위한 기본 준비
 
-- https://docs.datadoghq.com/tracing/guide/trace_ingestion_volume_control/
-- https://docs.datadoghq.com/tracing/trace_collection/dd_libraries/java/
+이 repo가 증명하지 않는 것:
 
-Datadog also documents that remote Ingestion Control rules from the Datadog UI take precedence over local tracer sampling rules. If local `DD_TRACE_SAMPLING_RULES` do not appear to behave as expected, check the Datadog UI for existing remote sampling configuration first.
+- production-grade release pipeline
+- 정교한 migration framework
+- 완전한 structured logging / alerting contract
+- 고도화된 authn/authz 또는 business-grade security model
 
-If `kubectl apply -f k8s-examples/datadog/datadog-agent.yaml` fails with `no matches for kind "DatadogAgent"`, the Operator CRDs are not installed in the current cluster.
+즉, 이 repo의 가치는 애플리케이션 기능 자체보다 **플랫폼에서 운영 가능한 전달 단위로 정리했다는 점**에 있습니다.
 
-## Helm Chart
+## Related Repo
 
-The chart under `k8s-examples/advanced/helm-chart` expects an existing Kubernetes secret:
-
-- secret name: `skyline-db-secret`
-- keys: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-
-Database connection pool size is still configured through Helm values.
-
-## API Highlights
-
-- `GET /api/flights`
-- `GET /api/flights/{id}`
-- `GET /api/flights/search`
-- `POST /api/reservations`
-- `GET /health`
-- `GET /ready`
-
-## Project Layout
-
-- `src/`: Spring Boot backend
-- `frontend/`: React frontend
-- `sql/`: schema and seed data
-- `k8s-examples/`: Kubernetes examples
-- `scripts/`: utility scripts
-- `docs/`: extra documentation
-
-## Notes
-
-- For local development, you can still pass DB environment variables directly.
-- For EKS, the recommended path is Parameter Store plus External Secrets, not `kubectl create secret`.
-- The default database name is `skylineapp`.
-- The Datadog deployment uses the service name `skyline-app` consistently across logs, tags, and traces.
+- Infra / EKS / RDS provisioning: `skyline-infra-terraform`
+- Additional notes: [`docs/API.md`](./docs/API.md), [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md), [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md)
